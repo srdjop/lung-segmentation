@@ -1,5 +1,3 @@
-# src/train.py (FINALNA ROBUSTNA VERZIJA)
-
 import os
 import torch
 import torch.nn as nn
@@ -11,7 +9,7 @@ from transformers import SamModel
 import cv2
 import numpy as np
 
-# Uvozimo naš Data Loader
+# Importing the Data Loader
 from data_loader import LungSegmentationDataset, get_train_transforms, get_val_transforms
 
 # --- Model SAM ---
@@ -24,7 +22,7 @@ class SAM_FineTune(nn.Module):
         outputs = self.model(pixel_values=pixel_values, input_boxes=input_boxes, multimask_output=False, return_dict=False)
         return outputs[0]
 
-# --- Funkcija Gubitka ---
+# --- Loss Function ---
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1.0):
         super(DiceLoss, self).__init__()
@@ -51,7 +49,7 @@ class CombinedLoss(nn.Module):
         bce = self.bce_loss(logits, targets)
         return (self.weight_dice * dice) + (self.weight_bce * bce)
 
-# --- Metrika ---
+# --- Metrics ---
 def dice_score(logits, targets, smooth=1.0):
     with torch.no_grad():
         probs = torch.sigmoid(logits)
@@ -62,7 +60,7 @@ def dice_score(logits, targets, smooth=1.0):
         score = (2. * intersection + smooth) / (probs.sum() + targets.sum() + smooth)
     return score.item()
 
-# --- Trening i Validacija Funkcije ---
+# --- Training and Validation ---
 def train_one_epoch(loader, model, optimizer, loss_fn, device):
     model.train()
     loop = tqdm(loader, desc="Training")
@@ -121,41 +119,41 @@ def evaluate(loader, model, loss_fn, device):
     print(f"Validation -> Avg Loss: {avg_loss:.4f}, Avg Dice Score: {avg_dice:.4f}")
     return avg_loss, avg_dice, images_to_log
 
-# --- Glavna Funkcija ---
+# --- Main Function ---
 def main():
-    # --- Hiperparametri ---
+    # --- Hyperparameters ---
     IMG_SIZE = 1024
     BATCH_SIZE = 2
     VAL_SPLIT = 0.2
     MODEL_NAME = "facebook/sam-vit-base"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # --- Faza 1: Trening samo dekodera ---
+    # --- Phase 1: Only Decoder Training ---
     PHASE1_EPOCHS = 5
     PHASE1_LR = 1e-4
 
-    # --- Faza 2: Fino podešavanje celog sistema ---
+    # --- Phase 2: Fine-tuning the whole system ---
     PHASE2_EPOCHS = 15
     PHASE2_LR_DECODER = 1e-5
     PHASE2_LR_ENCODER = 1e-6
     UNFREEZE_BLOCKS = 4
 
-    # --- wandb Inicijalizacija ---
+    # --- wandb initialization ---
     wandb.init(project="lung-segmentation-ams-robust")
 
-    # --- Učitavanje Podataka ---
+    # --- Loading the data ---
     train_transforms = get_train_transforms(IMG_SIZE)
     val_transforms = get_val_transforms(IMG_SIZE)
     full_dataset = LungSegmentationDataset(image_dir='data/images', mask_dir='data/masks', transform=train_transforms)
     train_size = int(len(full_dataset) * (1 - VAL_SPLIT))
     val_size = len(full_dataset) - train_size
     train_ds, val_ds = random_split(full_dataset, [train_size, val_size])
-    val_ds.dataset.transform = val_transforms # Validacioni set nema augmentacije
+    val_ds.dataset.transform = val_transforms 
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2)
     
-    # --- Faza 1: Trening Dekodera ---
-    print("\n--- Početak Faze 1: Trening samo dekodera ---")
+    # --- Phase 1: Decoder Training ---
+    print("\n--- Phase 1 starting: Decoder ---")
     model = SAM_FineTune(model_name=MODEL_NAME).to(DEVICE)
     for name, param in model.named_parameters():
         param.requires_grad = name.startswith("model.mask_decoder")
@@ -164,13 +162,13 @@ def main():
     loss_fn = CombinedLoss()
     
     for epoch in range(PHASE1_EPOCHS):
-        print(f"\n--- Faza 1, Epoha {epoch+1}/{PHASE1_EPOCHS} ---")
+        print(f"\n--- Phase 1, Epochs {epoch+1}/{PHASE1_EPOCHS} ---")
         train_loss = train_one_epoch(train_loader, model, optimizer, loss_fn, DEVICE)
         val_loss, val_dice, _ = evaluate(val_loader, model, loss_fn, DEVICE)
         wandb.log({"phase1_train_loss": train_loss, "phase1_val_loss": val_loss, "phase1_val_dice": val_dice, "epoch": epoch})
 
     # --- Faza 2: Fino Podešavanje ---
-    print("\n--- Početak Faze 2: Fino podešavanje enkodera i dekodera ---")
+    print("\n--- Phase 2 starting: Fine-tuning encoder and decoder ---")
     unfreeze_layers = [f"layers.{i}" for i in range(12 - UNFREEZE_BLOCKS, 12)]
     for name, param in model.named_parameters():
         if name.startswith("model.vision_encoder") and any(layer in name for layer in unfreeze_layers):
@@ -195,10 +193,10 @@ def main():
         if val_dice > best_val_dice:
             best_val_dice = val_dice
             torch.save(model.state_dict(), "best_sam2_model.pth")
-            print(f"=> Sačuvan novi najbolji model sa Dice Score: {val_dice:.4f}")
+            print(f"=> Saved the best model with Dice Score: {val_dice:.4f}")
 
     wandb.finish()
-    print("Trening završen.")
+    print("Training finished.")
 
 if __name__ == '__main__':
     main()
