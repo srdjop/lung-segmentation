@@ -1,5 +1,3 @@
-# src/train_unet.py
-
 import os
 import torch
 import torch.nn as nn
@@ -11,11 +9,9 @@ import segmentation_models_pytorch as smp
 import cv2
 import numpy as np
 
-# Uvozimo naš Data Loader, koji i dalje vraća bbox (koji ćemo ignorisati)
 from data_loader import LungSegmentationDataset, get_train_transforms, get_val_transforms
 
-# --- Funkcija Gubitka i Metrika ---
-# Ove funkcije ostaju iste kao i pre
+# --- Loss Function and Metrics---
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1.0):
         super(DiceLoss, self).__init__()
@@ -39,13 +35,13 @@ def dice_score(logits, targets, smooth=1.0):
         score = (2. * intersection + smooth) / (probs.sum() + targets.sum() + smooth)
     return score.item()
 
-# --- Trening i Validacija Funkcije (Pojednostavljene za U-Net) ---
+# --- Training and Validation ---
 def train_one_epoch(loader, model, optimizer, loss_fn, device):
     model.train()
     loop = tqdm(loader, desc="Training")
     total_loss = 0.0
 
-    for data, targets, _ in loop: # Ignorišemo treću vrednost (bboxes)
+    for data, targets, _ in loop: 
         data = data.to(device)
         targets = targets.to(device).unsqueeze(1)
         
@@ -69,7 +65,7 @@ def evaluate(loader, model, loss_fn, device):
     images_to_log = []
 
     with torch.no_grad():
-        for i, (data, targets, _) in enumerate(tqdm(loader, desc="Validation")): # Ignorišemo bboxes
+        for i, (data, targets, _) in enumerate(tqdm(loader, desc="Validation")): 
             data = data.to(device)
             targets = targets.to(device).unsqueeze(1)
 
@@ -80,7 +76,7 @@ def evaluate(loader, model, loss_fn, device):
             total_loss += loss.item()
             total_dice += dice
             
-            if i == 0: # Logujemo samo prvi batch za vizualizaciju
+            if i == 0: # Logging just the first batch for visualization
                 img_tensor = data[0]
                 true_mask_tensor = targets[0]
                 pred_mask_tensor = (torch.sigmoid(predictions[0]) > 0.5).float()
@@ -99,20 +95,20 @@ def evaluate(loader, model, loss_fn, device):
     print(f"Validation -> Avg Loss: {avg_loss:.4f}, Avg Dice Score: {avg_dice:.4f}")
     return avg_loss, avg_dice, images_to_log
 
-# --- Glavna Funkcija ---
+# --- Main Function ---
 def main():
-    # --- Hiperparametri ---
-    IMG_SIZE = 512       # U-Net radi odlično na 512x512, što će biti mnogo brže
-    BATCH_SIZE = 8       # Možemo koristiti veći batch size
+    # --- Hyperparameters ---
+    IMG_SIZE = 512       # U-Net works perfect on 512x512, indicating the faster model training
+    BATCH_SIZE = 8       # Bigger batch size
     LEARNING_RATE = 1e-4
-    NUM_EPOCHS = 25      # Treniraćemo malo duže jer je svaka epoha brza
+    NUM_EPOCHS = 25      
     VAL_SPLIT = 0.2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    ENCODER = "resnet34" # Moćan i brz enkoder
+    ENCODER = "resnet34" # Fast and robust encoder
 
-    # --- wandb Inicijalizacija ---
+    # --- wandb Initialization ---
     wandb.init(
-        project="lung-segmentation-ams-unet", # Novi projekat da ne mešamo rezultate
+        project="lung-segmentation-ams-unet", 
         config={
             "learning_rate": LEARNING_RATE,
             "architecture": f"U-Net with {ENCODER}",
@@ -122,12 +118,11 @@ def main():
         }
     )
 
-    # --- Učitavanje Podataka ---
-    # Kreiramo nove transformacije za 512x512
+    # --- Loading the data ---
+    # New transformation for 512x512
     train_transforms = get_train_transforms(IMG_SIZE)
     val_transforms = get_val_transforms(IMG_SIZE)
     
-    # Naš Data Loader i dalje radi, samo ćemo ignorisati bbox koji vraća
     full_dataset = LungSegmentationDataset(image_dir='data/images', mask_dir='data/masks')
     train_size = int(len(full_dataset) * (1 - VAL_SPLIT))
     val_size = len(full_dataset) - train_size
@@ -169,10 +164,10 @@ def main():
         if val_dice > best_val_dice:
             best_val_dice = val_dice
             torch.save(model.state_dict(), "best_unet_model.pth")
-            print(f"=> Sačuvan novi najbolji model sa Dice Score: {val_dice:.4f}")
+            print(f"=> Saved new best model with Dice Score: {val_dice:.4f}")
 
     wandb.finish()
-    print("Trening završen.")
+    print("Training finished.")
 
 if __name__ == '__main__':
     main()

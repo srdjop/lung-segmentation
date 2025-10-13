@@ -1,5 +1,3 @@
-# src/train_unet.py
-
 import os
 import torch
 import torch.nn as nn
@@ -12,11 +10,9 @@ import cv2
 import numpy as np
 from torch.utils.data import Subset # Dodaj na vrh
 
-# Uvozimo naš Data Loader, koji i dalje vraća bbox (koji ćemo ignorisati)
 from data_loader import LungSegmentationDataset, get_train_transforms, get_val_transforms
 
-# --- Funkcija Gubitka i Metrika ---
-# Ove funkcije ostaju iste kao i pre
+# --- Loss function and metrics ---
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1.0):
         super(DiceLoss, self).__init__()
@@ -40,13 +36,13 @@ def dice_score(logits, targets, smooth=1.0):
         score = (2. * intersection + smooth) / (probs.sum() + targets.sum() + smooth)
     return score.item()
 
-# --- Trening i Validacija Funkcije (Pojednostavljene za U-Net) ---
+# --- Training and Validation function ---
 def train_one_epoch(loader, model, optimizer, loss_fn, device):
     model.train()
     loop = tqdm(loader, desc="Training")
     total_loss = 0.0
 
-    for data, targets, _ in loop: # Ignorišemo treću vrednost (bboxes)
+    for data, targets, _ in loop: 
         data = data.to(device)
         targets = targets.to(device).unsqueeze(1)
         
@@ -70,7 +66,7 @@ def evaluate(loader, model, loss_fn, device):
     images_to_log = []
 
     with torch.no_grad():
-        for i, (data, targets, _) in enumerate(tqdm(loader, desc="Validation")): # Ignorišemo bboxes
+        for i, (data, targets, _) in enumerate(tqdm(loader, desc="Validation")):
             data = data.to(device)
             targets = targets.to(device).unsqueeze(1)
 
@@ -81,7 +77,7 @@ def evaluate(loader, model, loss_fn, device):
             total_loss += loss.item()
             total_dice += dice
             
-            if i == 0: # Logujemo samo prvi batch za vizualizaciju
+            if i == 0: # Just first batch for visualization
                 img_tensor = data[0]
                 true_mask_tensor = targets[0]
                 pred_mask_tensor = (torch.sigmoid(predictions[0]) > 0.5).float()
@@ -100,13 +96,13 @@ def evaluate(loader, model, loss_fn, device):
     print(f"Validation -> Avg Loss: {avg_loss:.4f}, Avg Dice Score: {avg_dice:.4f}")
     return avg_loss, avg_dice, images_to_log
 
-# --- Glavna Funkcija ---
+# --- Main function ---
 def main():
-    # --- Hiperparametri ---
+    # --- Hyperparameters ---
     IMG_SIZE = 512
-    BATCH_SIZE = 4 # Manji batch size za manje podataka
+    BATCH_SIZE = 4 # Smaller batch size for less data
     LEARNING_RATE = 1e-4
-    NUM_EPOCHS = 100 # Više epoha
+    NUM_EPOCHS = 100 
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     ENCODER = "resnet34"
 
@@ -121,12 +117,11 @@ def main():
         }
     )
 
-    # --- Učitavanje Podataka ---
-    # Koristimo samo validacione transformacije (bez augmentacija)
+    # --- Loading the data ---
     transforms = get_val_transforms(IMG_SIZE)
     full_dataset = LungSegmentationDataset(image_dir='data/images', mask_dir='data/masks', transform=transforms)
     
-    # Uzimamo samo mali podskup
+    # Small subset to force the overfitting
     sanity_dataset = Subset(full_dataset, range(16))
     
     train_loader = DataLoader(sanity_dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -141,7 +136,6 @@ def main():
     loss_fn = DiceLoss()
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
-    # --- Petlja za Obuku ---
     for epoch in range(NUM_EPOCHS):
         train_loss = train_one_epoch(train_loader, model, optimizer, loss_fn, DEVICE)
         wandb.log({"train_loss": train_loss, "epoch": epoch + 1})
@@ -149,7 +143,7 @@ def main():
 
     wandb.finish()
 
-    print("Trening završen.")
+    print("Training finished.")
 
 if __name__ == '__main__':
     main()
