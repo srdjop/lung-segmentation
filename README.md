@@ -35,7 +35,7 @@ lung_segmentation_project/
 │   ├── data_loader.py       # Custom PyTorch Dataset and augmentation functions
 │   ├── train_unet.py        # Main script for training the final U-Net model
 │   ├── inference.py         # Script to run inference on new illustrations
-│   ├── train_sam2.py        # Script for training SAM2 model
+│   ├── train_sam2.py        # Script for training our fine-tuned SAM model
 │   └── sanity_check_unet.py # Script for the U-Net model's sanity check (overfitting)
 ├── .gitignore               # Specifies intentionally untracked files to ignore
 ├── README.md                # This file
