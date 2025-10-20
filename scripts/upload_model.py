@@ -31,7 +31,7 @@ def upload_model_to_hf():
 
     upload_file(
         path_or_fileobj=MODEL_PATH,
-        path_in_repo="best_unet_model.pth", 
+        path_in_repo="best_unet_model_ext_dataset_v2.pth", 
         repo_id=HF_REPO_ID,
         repo_type="model",
     )

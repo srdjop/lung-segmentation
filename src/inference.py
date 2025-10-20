@@ -85,51 +85,68 @@ def visualize_prediction(original_image, predicted_mask, save_path=None):
 if __name__ == '__main__':
     # --- Configuration ---
     HF_REPO_ID = "srdjoo14/lung-segmentation-unet-resnet34" 
-    HF_FILENAME = "best_unet_model.pth" 
+    HF_FILENAME = "best_unet_model_ext_dataset.pth" 
     IMG_SIZE = 512
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    IMAGE_DIR = 'data/images'
+    #IMAGE_DIR = 'data/images'
+    IMAGE_PATH_TO_TEST = 'test_images/test_slika.png'
     
     # --- Load Model from Hugging Face Hub ---
     print(f"Downloading model from Hugging Face Hub: {HF_REPO_ID}")
-    model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=HF_FILENAME)
+    model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=HF_FILENAME, revision="adcf431f68b023c541660f95beb07fced46cd0ed")
     model = get_model().to(DEVICE)
     model.load_state_dict(torch.load(model_path, map_location=torch.device(DEVICE)))
     print("Model loaded successfully.")
     
     # --- Test on a Random Image ---
-    test_images = os.listdir(IMAGE_DIR)
-    if not test_images:
-        print(f"No images found in directory: {IMAGE_DIR}")
-    else:
-        random_image_name = random.choice(test_images)
-        image_path_to_test = os.path.join(IMAGE_DIR, random_image_name)
+    # test_images = os.listdir(IMAGE_DIR)
+    # if not test_images:
+    #     print(f"No images found in directory: {IMAGE_DIR}")
+    # else:
+    #     random_image_name = random.choice(test_images)
+    #     image_path_to_test = os.path.join(IMAGE_DIR, random_image_name)
         
-        print(f"\nTesting on image: {image_path_to_test}")
+    #     print(f"\nTesting on image: {image_path_to_test}")
+        
+    #     # 1. Get the prediction from the main function
+    #     #    predicted_mask_np is the binary image (an array with 0s and 1s)
+    #     predicted_mask_np, original_image_np = segment_lung(
+    #         model=model,
+    #         image_path=image_path_to_test,
+    #         img_size=IMG_SIZE,
+    #         device=DEVICE
+    #     )
+    #    
+    #    # Create the 'outputs' directory if it doesn't exist
+    #   
+        # --- Test on the Specified Image ---
+    if not os.path.exists(IMAGE_PATH_TO_TEST):
+        print(f"ERROR: Image not found at path: {IMAGE_PATH_TO_TEST}")
+        print("Please make sure you have created the 'test_images' folder and placed the image inside.")
+    else:
+        print(f"\nTesting on image: {IMAGE_PATH_TO_TEST}")
         
         # 1. Get the prediction from the main function
-        #    predicted_mask_np is the binary image (an array with 0s and 1s)
         predicted_mask_np, original_image_np = segment_lung(
             model=model,
-            image_path=image_path_to_test,
+            image_path=IMAGE_PATH_TO_TEST, # Koristimo specifičnu putanju
             img_size=IMG_SIZE,
             device=DEVICE
         )
-        
-        # Create the 'outputs' directory if it doesn't exist
+
         os.makedirs("outputs", exist_ok=True)
         
-        # --- Save both the binary mask and the visualization ---
+        # Dobijamo čisto ime fajla za čuvanje rezultata
+        image_filename = os.path.basename(IMAGE_PATH_TO_TEST)
         
-        # 2. Save the BINARY MASK (fulfills the main project requirement)
-        #    We multiply by 255 to get a black and white image (0=black, 255=white)
+        # 2. Save the BINARY MASK
         binary_mask_image = Image.fromarray((predicted_mask_np * 255).astype(np.uint8))
-        binary_mask_save_path = f"outputs/binary_mask_{random_image_name}"
+        binary_mask_save_path = f"outputs/binary_mask_{image_filename}"
         binary_mask_image.save(binary_mask_save_path)
         print(f"Binary mask (function result) saved to: {binary_mask_save_path}")
 
         # 3. Save the nice VISUALIZATION for the presentation
-        viz_save_path = f"outputs/visual_overlay_{random_image_name}"
+        viz_save_path = f"outputs/visual_overlay_{image_filename}"
         visualize_prediction(
             original_image=original_image_np,
             predicted_mask=predicted_mask_np,
